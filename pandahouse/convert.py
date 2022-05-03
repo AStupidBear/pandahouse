@@ -1,12 +1,15 @@
 import csv
+import io
+import os
 import sys
+from collections import OrderedDict
+
 import numpy as np
 import pandas as pd
-from collections import OrderedDict
+from pyarrow.parquet import ParquetFile
 from toolz import itemmap, keymap, valmap
 
-from .utils import decode_escapes, decode_array
-
+from .utils import decode_array, decode_escapes
 
 MAPPING = {'object': 'String',
            'uint64': 'UInt64',
@@ -91,3 +94,18 @@ def partition(df, chunksize=1000):
 
         chunk = df.iloc[start_i:end_i]
         yield chunk
+
+
+def read_parquet(path, chunksize=65535, remove=False):
+    pqfile = ParquetFile(path)
+    for batch in pqfile.iter_batches(chunksize):
+        yield batch.to_pandas()
+    if remove:
+        os.remove(path)
+
+
+def to_parquet(df):
+    buf = io.BytesIO()
+    df.to_parquet(buf, compression="snappy")
+    buf.seek(0)
+    return buf

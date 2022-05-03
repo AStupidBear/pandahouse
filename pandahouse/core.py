@@ -1,11 +1,16 @@
+import io
+
+import pandas as pd
+
+from .convert import (normalize, partition, read_parquet, to_csv, to_dataframe,
+                      to_parquet)
 from .http import execute
 from .utils import escape
-from .convert import normalize, partition, to_dataframe, to_csv
 
 
 def selection(query, tables=None, index=True):
     query = query.strip().strip(';')
-    query = '{} FORMAT TSVWithNamesAndTypes'.format(query)
+    query = '{} FORMAT Parquet'.format(query)
 
     external = {}
     tables = tables or {}
@@ -19,7 +24,7 @@ def selection(query, tables=None, index=True):
 
 
 def insertion(df, table, index=True):
-    insert = 'INSERT INTO {db}.{table} ({columns}) FORMAT CSV'
+    insert = 'INSERT INTO {db}.{table} ({columns}) FORMAT Parquet'
     _, df = normalize(df, index=index)
 
     columns = ', '.join(map(escape, df.columns))
@@ -28,7 +33,7 @@ def insertion(df, table, index=True):
     return query, df
 
 
-def read_clickhouse(query, tables=None, index=True, connection=None, verify=True,  **kwargs):
+def read_clickhouse(query, tables=None, index=True, connection=None, verify=True, stream=True, pqfile=None, chunksize=65535, **kwargs):
     """Reads clickhouse query to pandas dataframe
 
     Parameters
@@ -55,14 +60,29 @@ def read_clickhouse(query, tables=None, index=True, connection=None, verify=True
     Additional keyword arguments passed to `pandas.read_csv`
     """
     query, external = selection(query, tables=tables, index=index)
-    lines = execute(query, external=external, stream=True,
+    lines = execute(query, external=external, stream=stream,
                     connection=connection, verify=verify)
-    return to_dataframe(lines, **kwargs)
+    if stream:
+        if pqfile is None:
+            import tempfile
+            pqfile = tempfile.mktemp(suffix=".pq")
+        with open(pqfile, "wb") as f:
+            while True:
+                buf = lines.read(10*1024**2)
+                if len(buf) == 0:
+                    break
+                else:
+                    f.write(buf)
+        lines.release_conn()
+        df = read_parquet(pqfile, chunksize, remove=True)
+    else:
+        df = pd.read_parquet(io.BytesIO(lines))
+    return df
 
 
 def to_clickhouse(df, table, index=True, chunksize=1000, connection=None):
     query, df = insertion(df, table, index=index)
     for chunk in partition(df, chunksize=chunksize):
-        execute(query, data=to_csv(chunk), connection=connection)
+        execute(query, data=to_parquet(chunk), connection=connection)
 
     return df.shape[0]
