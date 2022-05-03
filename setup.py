@@ -17,7 +17,7 @@ setup(name='pandahouse',
       packages=['pandahouse'],
       tests_require=['pytest'],
       setup_requires=['pytest-runner'],
-      install_requires=['pandas', 'requests', 'toolz'],
+      install_requires=['pandas', 'requests', 'toolz', 'pyarrow'],
       long_description=(open('README.rst').read() if exists('README.rst')
                         else ''),
       zip_safe=False)

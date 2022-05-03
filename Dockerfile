@@ -6,7 +6,8 @@ RUN conda install -c conda-forge \
         libgcc \
         pandas \
         numpy \
-        requests && \
+        requests \
+        pyarrow && \
     conda clean --all
 
 ADD . /pandahouse
