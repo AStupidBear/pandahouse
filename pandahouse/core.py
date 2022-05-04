@@ -35,7 +35,7 @@ def insertion(df, table, index=True):
     return query, df
 
 
-def read_clickhouse(query, tables=None, index=True, connection=None, verify=True, stream=True, pqfile=None, chunksize=65535, decode_binary=True, **kwargs):
+def read_clickhouse(query, tables=None, index=True, connection=None, verify=True, chunksize=None, pqfile=None, decode_binary=True, **kwargs):
     """Reads clickhouse query to pandas dataframe
 
     Parameters
@@ -80,8 +80,8 @@ def read_clickhouse(query, tables=None, index=True, connection=None, verify=True
                 df[name] = df[name].str.decode("utf-8")
         return df
     query, external = selection(query, tables=tables, index=index)
-    lines = execute(query, external=external, stream=stream,
-                    connection=connection, verify=verify)
+    stream = chunksize is not None
+    lines = execute(query, external=external, stream=stream, connection=connection, verify=verify)
     if stream:
         if pqfile is None:
             import tempfile
