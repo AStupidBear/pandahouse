@@ -68,7 +68,7 @@ def read_clickhouse(query, tables=None, index=True, connection=None, verify=True
     query0 = query0 + "  FORMAT JSONCompactEachRowWithNamesAndTypes"
     lines = execute(query0, stream=False, connection=connection)
     names, types = map(json.loads, lines.decode("utf-8").split("\n", 1))
-    def converter(df):
+    def transform(df):
         for (name, type) in zip(names, types):
             if type == "Date":
                 df[name] = pd.to_timedelta(df[name], unit="day") + pd.Timestamp("1970-01-01")
@@ -94,9 +94,9 @@ def read_clickhouse(query, tables=None, index=True, connection=None, verify=True
                 else:
                     f.write(buf)
         lines.release_conn()
-        df = read_parquet(pqfile, chunksize, converter, remove=True)
+        df = map(transform, read_parquet(pqfile, chunksize, remove=True))
     else:
-        df = converter(pd.read_parquet(io.BytesIO(lines)))
+        df = transform(pd.read_parquet(io.BytesIO(lines)))
     return df
 
 
