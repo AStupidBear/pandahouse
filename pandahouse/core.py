@@ -1,4 +1,6 @@
 import io
+import json
+import re
 
 import pandas as pd
 
@@ -33,7 +35,7 @@ def insertion(df, table, index=True):
     return query, df
 
 
-def read_clickhouse(query, tables=None, index=True, connection=None, verify=True, stream=True, pqfile=None, chunksize=65535, **kwargs):
+def read_clickhouse(query, tables=None, index=True, connection=None, verify=True, stream=True, pqfile=None, chunksize=65535, decode_binary=True, **kwargs):
     """Reads clickhouse query to pandas dataframe
 
     Parameters
@@ -59,6 +61,24 @@ def read_clickhouse(query, tables=None, index=True, connection=None, verify=True
 
     Additional keyword arguments passed to `pandas.read_csv`
     """
+    if re.match("LIMIT", query, re.IGNORECASE):
+        query0 = query + " LIMIT 0"
+    else:
+        query0 = re.sub("LIMIT\s+\d+", "LIMIT 0", query, re.IGNORECASE)
+    query0 = query0 + "  FORMAT JSONCompactEachRowWithNamesAndTypes"
+    lines = execute(query0, stream=False, connection=connection)
+    names, types = map(json.loads, lines.decode("utf-8").split("\n", 1))
+    def converter(df):
+        for (name, type) in zip(names, types):
+            if type == "Date":
+                df[name] = pd.to_timedelta(df[name], unit="day") + pd.Timestamp("1970-01-01")
+            elif type == "Date32":
+                df[name] = pd.to_timedelta(df[name], unit="day") + pd.Timestamp("1925-01-01")
+            elif type == "DateTime":
+                df[name] = df[name].mul(1e9).astype("datetime64[ns]")
+            elif type == "String" and decode_binary:
+                df[name] = df[name].str.decode("utf-8")
+        return df
     query, external = selection(query, tables=tables, index=index)
     lines = execute(query, external=external, stream=stream,
                     connection=connection, verify=verify)
@@ -74,9 +94,9 @@ def read_clickhouse(query, tables=None, index=True, connection=None, verify=True
                 else:
                     f.write(buf)
         lines.release_conn()
-        df = read_parquet(pqfile, chunksize, remove=True)
+        df = read_parquet(pqfile, chunksize, converter, remove=True)
     else:
-        df = pd.read_parquet(io.BytesIO(lines))
+        df = converter(pd.read_parquet(io.BytesIO(lines)))
     return df
 
 

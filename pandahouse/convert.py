@@ -96,10 +96,10 @@ def partition(df, chunksize=1000):
         yield chunk
 
 
-def read_parquet(path, chunksize=65535, remove=False):
+def read_parquet(path, chunksize=65535, converter=lambda x: x, remove=False):
     pqfile = ParquetFile(path)
     for batch in pqfile.iter_batches(chunksize):
-        yield batch.to_pandas()
+        yield converter(batch.to_pandas())
     if remove:
         os.remove(path)
 
